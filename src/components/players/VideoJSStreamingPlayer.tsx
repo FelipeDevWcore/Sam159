@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Settings, AlertCircle, RotateCcw, ExternalLink, Activity, Eye, Clock, Wifi, WifiOff } from 'lucide-react';
+import { Play, AlertCircle, RotateCcw, ExternalLink, Activity, Eye, Clock, Wifi, WifiOff } from 'lucide-react';
 
 interface VideoJSStreamingPlayerProps {
   src?: string;
@@ -27,12 +27,6 @@ interface VideoJSStreamingPlayerProps {
   };
 }
 
-declare global {
-  interface Window {
-    videojs: any;
-  }
-}
-
 const VideoJSStreamingPlayer: React.FC<VideoJSStreamingPlayerProps> = ({
   src,
   title,
@@ -49,286 +43,120 @@ const VideoJSStreamingPlayer: React.FC<VideoJSStreamingPlayerProps> = ({
   watermark
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
-  const [retryCount, setRetryCount] = useState(0);
   const [showStats, setShowStats] = useState(false);
-  const maxRetries = 3;
 
-  // Cleanup function
-  const cleanupPlayer = () => {
-    if (playerRef.current) {
-      try {
-        if (typeof playerRef.current.dispose === 'function') {
-          playerRef.current.dispose();
-        }
-        playerRef.current = null;
-        setIsPlayerReady(false);
-        console.log('✅ Video.js player limpo');
-      } catch (error) {
-        console.warn('Erro ao limpar Video.js player:', error);
-        playerRef.current = null;
-        setIsPlayerReady(false);
+  // Usar player HTML5 simples em vez do Video.js para evitar problemas de DOM
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src) return;
+
+    setError(null);
+    setLoading(true);
+    setConnectionStatus('connecting');
+
+    console.log('🎥 Configurando player HTML5 simples:', src);
+
+    // Configurar propriedades do vídeo
+    video.crossOrigin = 'anonymous';
+    video.preload = 'metadata';
+    video.muted = muted;
+    video.autoplay = autoplay;
+    video.controls = controls;
+
+    // Adicionar token de autenticação se necessário
+    let videoSrc = src;
+    if (src.includes('/content/') || src.includes('/api/videos-ssh/')) {
+      const token = localStorage.getItem('auth_token');
+      if (token && !src.includes('auth_token=') && !src.includes('Authorization')) {
+        const separator = src.includes('?') ? '&' : '?';
+        videoSrc = `${src}${separator}auth_token=${encodeURIComponent(token)}`;
       }
     }
-  };
 
-  // Carregar Video.js dinamicamente
-  useEffect(() => {
-    const loadVideoJS = async () => {
-      if (window.videojs) {
-        initializePlayer();
-        return;
-      }
+    video.src = videoSrc;
 
-      try {
-        // Carregar CSS do Video.js
-        if (!document.querySelector('link[href*="video-js.css"]')) {
-          const cssLink = document.createElement('link');
-          cssLink.rel = 'stylesheet';
-          cssLink.href = 'https://vjs.zencdn.net/8.10.0/video-js.css';
-          document.head.appendChild(cssLink);
-        }
-
-        // Carregar JavaScript do Video.js
-        if (!document.querySelector('script[src*="video.min.js"]')) {
-          const script = document.createElement('script');
-          script.src = 'https://vjs.zencdn.net/8.10.0/video.min.js';
-          script.onload = () => {
-            // Carregar plugin HLS
-            if (!document.querySelector('script[src*="videojs-http-streaming"]')) {
-              const hlsScript = document.createElement('script');
-              hlsScript.src = 'https://cdn.jsdelivr.net/npm/@videojs/http-streaming@3.0.2/dist/videojs-http-streaming.min.js';
-              hlsScript.onload = () => initializePlayer();
-              hlsScript.onerror = () => {
-                setError('Erro ao carregar plugin HLS');
-                setLoading(false);
-              };
-              document.head.appendChild(hlsScript);
-            } else {
-              initializePlayer();
-            }
-          };
-          script.onerror = () => {
-            setError('Erro ao carregar Video.js');
-            setLoading(false);
-          };
-          document.head.appendChild(script);
-        } else {
-          initializePlayer();
-        }
-      } catch (error) {
-        console.error('Erro ao carregar Video.js:', error);
-        setError('Erro ao carregar player');
-        setLoading(false);
-      }
+    // Event listeners
+    const handleLoadStart = () => {
+      setLoading(true);
+      setConnectionStatus('connecting');
     };
 
-    const initializePlayer = () => {
-      if (!videoRef.current || !window.videojs) return;
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        console.log('🎥 Inicializando Video.js player para streaming...');
-
-        const player = window.videojs(videoRef.current, {
-          controls: controls,
-          responsive: true,
-          fluid: true,
-          playbackRates: [0.5, 1, 1.25, 1.5, 2],
-          html5: {
-            hls: {
-              overrideNative: true,
-              enableLowInitialPlaylist: isLive,
-              smoothQualityChange: true,
-              handlePartialData: true
-            },
-            vhs: {
-              overrideNative: true,
-              withCredentials: false
-            }
-          },
-          liveui: isLive,
-          liveTracker: isLive ? {
-            trackingThreshold: 20,
-            liveTolerance: 15
-          } : false,
-          inactivityTimeout: 0,
-          userActions: {
-            hotkeys: true
-          }
-        });
-
-        playerRef.current = player;
-
-        player.ready(() => {
-          console.log('✅ Video.js streaming player pronto');
-          setIsPlayerReady(true);
-          setLoading(false);
-          setRetryCount(0);
-          
-          if (onReady) onReady();
-          
-          // Configurar fonte se disponível
-          if (src) {
-            setTimeout(() => updatePlayerSource(), 100);
-          }
-        });
-
-        // Event listeners
-        player.on('play', () => {
-          console.log('▶️ Video.js streaming play');
-          setConnectionStatus('connected');
-          if (onPlay) onPlay();
-        });
-
-        player.on('pause', () => {
-          console.log('⏸️ Video.js streaming pause');
-          if (onPause) onPause();
-        });
-
-        player.on('error', (e: any) => {
-          console.error('❌ Video.js streaming error:', e);
-          const errorObj = player.error();
-          
-          let errorMessage = 'Erro ao carregar stream';
-          if (errorObj) {
-            switch (errorObj.code) {
-              case 1: errorMessage = 'Reprodução abortada'; break;
-              case 2: errorMessage = 'Erro de rede - Verifique se a transmissão está ativa'; break;
-              case 3: errorMessage = 'Erro de decodificação'; break;
-              case 4: errorMessage = 'Stream não suportado ou offline'; break;
-              default: errorMessage = errorObj.message || 'Stream offline ou inacessível';
-            }
-          }
-          
-          setError(errorMessage);
-          setLoading(false);
-          setConnectionStatus('disconnected');
-          
-          if (onError) onError(e);
-        });
-
-        player.on('loadstart', () => {
-          setLoading(true);
-          setError(null);
-          setConnectionStatus('connecting');
-        });
-
-        player.on('canplay', () => {
-          setLoading(false);
-          setConnectionStatus('connected');
-        });
-
-        player.on('waiting', () => {
-          setLoading(true);
-        });
-
-        player.on('playing', () => {
-          setLoading(false);
-          setConnectionStatus('connected');
-        });
-
-      } catch (error) {
-        console.error('Erro ao inicializar Video.js:', error);
-        setError('Erro ao inicializar player');
-        setLoading(false);
-        
-        if (retryCount < maxRetries) {
-          console.log(`🔄 Tentativa ${retryCount + 1}/${maxRetries} de reinicializar...`);
-          setRetryCount(prev => prev + 1);
-          setTimeout(() => {
-            cleanupPlayer();
-            initializePlayer();
-          }, 2000);
-        }
-      }
+    const handleCanPlay = () => {
+      setLoading(false);
+      setConnectionStatus('connected');
+      if (onReady) onReady();
     };
 
-    loadVideoJS();
+    const handlePlay = () => {
+      setConnectionStatus('connected');
+      if (onPlay) onPlay();
+    };
+
+    const handlePause = () => {
+      if (onPause) onPause();
+    };
+
+    const handleError = (e: Event) => {
+      setLoading(false);
+      setConnectionStatus('disconnected');
+      const target = e.target as HTMLVideoElement;
+      
+      let errorMessage = 'Erro ao carregar stream';
+      if (target.error) {
+        switch (target.error.code) {
+          case 1: errorMessage = 'Reprodução abortada'; break;
+          case 2: errorMessage = 'Erro de rede - Verifique se a transmissão está ativa'; break;
+          case 3: errorMessage = 'Erro de decodificação'; break;
+          case 4: errorMessage = 'Stream não suportado ou offline'; break;
+          default: errorMessage = 'Stream offline ou inacessível';
+        }
+      }
+      
+      setError(errorMessage);
+      if (onError) onError(e);
+    };
+
+    const handleWaiting = () => {
+      setLoading(true);
+    };
+
+    const handlePlaying = () => {
+      setLoading(false);
+      setConnectionStatus('connected');
+    };
+
+    // Adicionar listeners
+    video.addEventListener('loadstart', handleLoadStart);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('error', handleError);
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('playing', handlePlaying);
 
     return () => {
-      cleanupPlayer();
+      video.removeEventListener('loadstart', handleLoadStart);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      video.removeEventListener('error', handleError);
+      video.removeEventListener('waiting', handleWaiting);
+      video.removeEventListener('playing', handlePlaying);
     };
-  }, []);
-
-  // Atualizar fonte quando src mudar
-  useEffect(() => {
-    if (isPlayerReady && playerRef.current && src) {
-      updatePlayerSource();
-    }
-  }, [src, isPlayerReady]);
-
-  const updatePlayerSource = () => {
-    if (!playerRef.current || !src) return;
-
-    try {
-      console.log('🎥 Atualizando fonte Video.js streaming:', src);
-      
-      // Detectar tipo de fonte
-      const isHLS = src.includes('.m3u8') || isLive;
-      
-      const sourceConfig = {
-        src: src,
-        type: isHLS ? 'application/x-mpegURL' : 'video/mp4',
-        withCredentials: false
-      };
-
-      // Limpar fonte atual
-      if (typeof playerRef.current.pause === 'function') {
-        playerRef.current.pause();
-      }
-      
-      if (typeof playerRef.current.src === 'function') {
-        playerRef.current.src('');
-      }
-      
-      // Aguardar e definir nova fonte
-      setTimeout(() => {
-        if (playerRef.current && typeof playerRef.current.src === 'function') {
-          playerRef.current.src(sourceConfig);
-          
-          if (autoplay) {
-            setTimeout(() => {
-              if (playerRef.current && typeof playerRef.current.play === 'function') {
-                playerRef.current.play().catch((error: any) => {
-                  console.warn('Autoplay falhou:', error);
-                });
-              }
-            }, 500);
-          }
-        }
-      }, 200);
-      
-    } catch (error) {
-      console.error('Erro ao atualizar fonte:', error);
-      setError('Erro ao carregar stream');
-    }
-  };
+  }, [src, autoplay, muted, controls, onReady, onPlay, onPause, onError]);
 
   const retry = () => {
     setError(null);
     setLoading(true);
-    setRetryCount(0);
     
-    if (playerRef.current && src) {
-      updatePlayerSource();
-    } else {
-      cleanupPlayer();
-      setTimeout(() => {
-        if (videoRef.current && window.videojs) {
-          // Reinicializar player
-          const event = new Event('retry');
-          videoRef.current.dispatchEvent(event);
-        }
-      }, 1000);
+    const video = videoRef.current;
+    if (video && src) {
+      video.load();
     }
   };
 
@@ -353,16 +181,16 @@ const VideoJSStreamingPlayer: React.FC<VideoJSStreamingPlayerProps> = ({
     return (
       <div className={`aspect-video bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg flex flex-col items-center justify-center text-white ${className}`}>
         <Play className="h-16 w-16 mb-4 text-gray-400" />
-        <h3 className="text-xl font-semibold mb-2">Video.js Streaming Player</h3>
+        <h3 className="text-xl font-semibold mb-2">Player de Streaming</h3>
         <p className="text-gray-400 text-center max-w-md">
-          Player profissional com suporte completo a HLS/M3U8 para transmissões ao vivo
+          Player otimizado para transmissões HLS/M3U8 ao vivo
         </p>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className={`videojs-streaming-player relative ${className}`}>
+    <div ref={containerRef} className={`videojs-streaming-player relative bg-black rounded-lg overflow-hidden aspect-video ${className}`}>
       {/* Indicador de transmissão ao vivo */}
       {isLive && (
         <div className="absolute top-4 left-4 z-20">
@@ -418,7 +246,6 @@ const VideoJSStreamingPlayer: React.FC<VideoJSStreamingPlayerProps> = ({
             </div>
             {streamStats.quality && (
               <div className="flex items-center space-x-2">
-                <Settings className="h-3 w-3" />
                 <span>{streamStats.quality}</span>
               </div>
             )}
@@ -483,23 +310,16 @@ const VideoJSStreamingPlayer: React.FC<VideoJSStreamingPlayerProps> = ({
                   </button>
                 )}
               </div>
-              {retryCount > 0 && (
-                <p className="text-xs text-gray-400 mt-2">
-                  Tentativas: {retryCount}/{maxRetries}
-                </p>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Elemento de vídeo para Video.js */}
+      {/* Elemento de vídeo HTML5 simples */}
       <video
         ref={videoRef}
-        className="video-js vjs-default-skin w-full aspect-video"
+        className="w-full h-full object-contain"
         controls={controls}
-        preload="auto"
-        data-setup="{}"
         playsInline
         crossOrigin="anonymous"
       />

@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import VideoJSStreamingPlayer from './VideoJSStreamingPlayer';
-import HLSStreamingPlayer from './HLSStreamingPlayer';
-import ClapprStreamingPlayer from './ClapprStreamingPlayer';
+import IFrameVideoPlayer from '../IFrameVideoPlayer';
 import { Play, Settings, Eye, Share2, Download, Zap, Monitor, Activity, Radio, Wifi, WifiOff, AlertCircle, CheckCircle, RefreshCw, ExternalLink } from 'lucide-react';
 
 interface StreamingPlayerManagerProps {
@@ -173,42 +171,47 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
   };
 
   const renderPlayer = () => {
-    const commonProps = {
-      src: currentStreamUrl,
-      title: streamTitle,
-      isLive: streamStatus?.is_live || false,
-      autoplay: false,
-      muted: false,
-      controls: true,
-      className: "w-full h-full",
-      onReady: () => console.log(`${selectedPlayer} player pronto`),
-      onPlay: () => console.log(`${selectedPlayer} reproduzindo`),
-      onPause: () => console.log(`${selectedPlayer} pausado`),
-      onError: (error: any) => console.error(`Erro no ${selectedPlayer}:`, error),
-      streamStats: streamStatus?.is_live ? {
-        viewers: streamStatus.transmission?.stats.viewers || streamStatus.obs_stream?.viewers || 0,
-        bitrate: streamStatus.transmission?.stats.bitrate || streamStatus.obs_stream?.bitrate || 0,
-        uptime: streamStatus.transmission?.stats.uptime || streamStatus.obs_stream?.uptime || '00:00:00',
-        quality: '1080p',
-        isRecording: streamStatus.obs_stream?.recording || false
-      } : undefined,
-      watermark: watermarkConfig.enabled && selectedLogo ? {
-        url: selectedLogo,
-        position: watermarkConfig.position,
-        opacity: watermarkConfig.opacity
-      } : undefined
-    };
-
-    switch (selectedPlayer) {
-      case 'videojs':
-        return <VideoJSStreamingPlayer {...commonProps} />;
-      case 'hlsjs':
-        return <HLSStreamingPlayer {...commonProps} />;
-      case 'clappr':
-        return <ClapprStreamingPlayer {...commonProps} />;
-      default:
-        return <VideoJSStreamingPlayer {...commonProps} />;
+    // Usar IFrame player simples para evitar problemas de DOM
+    if (currentStreamUrl) {
+      // Construir URL do player na porta do sistema
+      const baseUrl = process.env.NODE_ENV === 'production' 
+        ? 'http://samhost.wcore.com.br:3001'
+        : 'http://localhost:3001';
+      
+      const iframeUrl = `${baseUrl}/api/player-port/iframe?stream=${userLogin}_live&player=1&contador=true&compartilhamento=true`;
+      
+      return (
+        <IFrameVideoPlayer
+          src={iframeUrl}
+          title={streamTitle}
+          isLive={streamStatus?.is_live || false}
+          autoplay={false}
+          controls={true}
+          className="w-full h-full"
+          streamStats={streamStatus?.is_live ? {
+            viewers: streamStatus.transmission?.stats.viewers || streamStatus.obs_stream?.viewers || 0,
+            bitrate: streamStatus.transmission?.stats.bitrate || streamStatus.obs_stream?.bitrate || 0,
+            uptime: streamStatus.transmission?.stats.uptime || streamStatus.obs_stream?.uptime || '00:00:00',
+            quality: '1080p',
+            isRecording: streamStatus.obs_stream?.recording || false
+          } : undefined}
+          onReady={() => console.log('IFrame player pronto')}
+          onError={(error: any) => console.error('Erro no IFrame player:', error)}
+        />
+      );
     }
+    
+    return (
+      <div className="w-full h-full flex items-center justify-center text-white">
+        <div className="text-center">
+          <WifiOff className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+          <h3 className="text-xl font-semibold mb-2">Nenhuma Transmissão Ativa</h3>
+          <p className="text-gray-400 mb-4">
+            {connectionError ? 'Erro de conexão com o servidor' : 'Inicie uma transmissão para visualizar aqui'}
+          </p>
+        </div>
+      </div>
+    );
   };
 
   const getStreamStatusInfo = () => {

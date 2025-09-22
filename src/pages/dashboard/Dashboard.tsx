@@ -7,7 +7,7 @@ import {
   AlertCircle, CheckCircle, Wifi, WifiOff, Server, HardDrive
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import StreamingPlayerManager from '../../components/players/StreamingPlayerManager';
+import IFrameVideoPlayer from '../../components/IFrameVideoPlayer';
 
 interface DashboardStats {
   totalVideos: number;
@@ -524,14 +524,43 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden">
-              <StreamingPlayerManager
-                className="w-full h-full"
-                showPlayerSelector={false}
-                enableSocialSharing={false}
-                enableViewerCounter={true}
-                enableWatermark={true}
-                autoDetectStream={true}
-              />
+              {streamStatus?.is_live ? (
+                <IFrameVideoPlayer
+                  src={currentVideoUrl}
+                  title={streamTitle}
+                  isLive={true}
+                  autoplay={false}
+                  controls={true}
+                  className="w-full h-full"
+                  onError={(error) => {
+                    console.error('Erro no player do dashboard:', error);
+                    setPlayerError('Erro ao carregar player');
+                  }}
+                  onReady={() => {
+                    console.log('Player do dashboard pronto');
+                    setPlayerError(null);
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white">
+                  <div className="text-center">
+                    <WifiOff className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-xl font-semibold mb-2">Nenhuma Transmissão Ativa</h3>
+                    <p className="text-gray-400 mb-4">
+                      {connectionError ? 'Erro de conexão com o servidor' : 'Inicie uma transmissão para visualizar aqui'}
+                    </p>
+                    {connectionError && (
+                      <button
+                        onClick={loadStreamStatus}
+                        className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 flex items-center mx-auto"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Tentar Novamente
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

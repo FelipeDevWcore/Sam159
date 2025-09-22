@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import IFrameVideoPlayer from './IFrameVideoPlayer';
-import PlayerSelector from './PlayerSelector';
 import { Play, Settings, Eye, Share2, Download, Zap, Monitor, Activity } from 'lucide-react';
 
 interface StreamingPlayerManagerProps {
@@ -206,15 +205,6 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
 
   return (
     <div className={`streaming-player-manager space-y-6 ${className}`}>
-      {/* Seletor de Player */}
-      {showPlayerSelector && (
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <PlayerSelector
-            selectedPlayer={selectedPlayer}
-            onPlayerChange={setSelectedPlayer}
-          />
-        </div>
-      )}
 
       {/* Configurações do Player */}
       <div className="bg-white rounded-lg shadow-sm p-6">
